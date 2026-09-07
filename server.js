@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
+const crypto = require('crypto');
 
 const app = express();
 app.use(cors());
@@ -11,9 +12,21 @@ app.use(express.json());
 const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
+const LOVABLE_API_KEY = process.env.LOVABLE_API_KEY;
 
 // URL de base WhatsApp API
 const WHATSAPP_API_URL = `https://graph.instagram.com/v18.0/${PHONE_NUMBER_ID}`;
+
+// ===== MIDDLEWARE : Vérifier la clé API pour Lovable =====
+function verifyApiKey(req, res, next) {
+  const apiKey = req.headers['x-api-key'];
+  
+  if (!apiKey || apiKey !== LOVABLE_API_KEY) {
+    return res.status(401).json({ error: 'Invalid API Key' });
+  }
+  
+  next();
+}
 
 // ===== WEBHOOK : Reçoit les messages de WhatsApp =====
 app.post('/webhook', (req, res) => {
@@ -30,13 +43,6 @@ app.post('/webhook', (req, res) => {
         const timestamp = messageData.timestamp;
 
         console.log(`📨 Message reçu de ${from}: ${text}`);
-
-        // Ici tu peux :
-        // - Stocker en Supabase
-        // - Notifier tes agents
-        // - Envoyer une réponse auto
-
-        // Pour maintenant, on fait juste un log
         logMessageToServer(from, text, timestamp);
       }
     });
@@ -59,10 +65,14 @@ app.get('/webhook', (req, res) => {
   }
 });
 
-// ===== ENVOYER UN MESSAGE =====
-app.post('/send-message', async (req, res) => {
+// ===== ENVOYER UN MESSAGE (Sécurisé avec clé API) =====
+app.post('/send-message', verifyApiKey, async (req, res) => {
   try {
     const { to, message } = req.body;
+
+    if (!to || !message) {
+      return res.status(400).json({ error: 'Missing "to" or "message"' });
+    }
 
     const response = await axios.post(
       `${WHATSAPP_API_URL}/messages`,
